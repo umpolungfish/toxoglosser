@@ -1,6 +1,8 @@
-# Toxoglosser Enhanced: Advanced Process Injection Toolkit (2025 Edition)
+# Toxoglosser: Process Injection Toolkit
 
-Toxoglosser Enhanced is a sophisticated, operationally viable tool implementing state-of-the-art process injection techniques for 64-bit Windows systems (2025-2026 standards). It incorporates cutting-edge EDR evasion techniques to inject staged payloads into target processes while evading modern security solutions like:
+`toxoglosser` is an operationally viable process injection tool for 64-bit Windows systems
+
+It incorporates cutting-edge EDR evasion techniques to inject staged payloads into target processes while evading modern security solutions like:
 
 	+ Data Execution Prevention (DEP)
 	+ Address Space Layout Randomization (ASLR)
