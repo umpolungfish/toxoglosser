@@ -202,11 +202,11 @@ func queueAPCToProcessThreads(process windows.Handle, shellcodeAddr uintptr) err
 
 // Thread32First and Thread32Next are used for thread enumeration
 var (
-	kernel32              = windows.NewLazySystemDLL("kernel32.dll")
-	procCreateToolhelp32Snapshot = kernel32.NewProc("CreateToolhelp32Snapshot")
-	procThread32First     = kernel32.NewProc("Thread32First")
-	procThread32Next      = kernel32.NewProc("Thread32Next")
-	procOpenThread        = kernel32.NewProc("OpenThread")
+	apcKernel32              = windows.NewLazySystemDLL("kernel32.dll")
+	procCreateToolhelp32Snapshot = apcKernel32.NewProc("CreateToolhelp32Snapshot")
+	procThread32First     = apcKernel32.NewProc("Thread32First")
+	procThread32Next      = apcKernel32.NewProc("Thread32Next")
+	procOpenThread        = apcKernel32.NewProc("OpenThread")
 )
 
 // THREADENTRY32 structure for thread enumeration

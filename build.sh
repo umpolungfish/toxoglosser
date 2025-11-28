@@ -8,7 +8,7 @@ echo "[*] Building toxoglosser with Garble obfuscation and size reduction..."
 # Check if Garble is installed
 if ! command -v garble &> /dev/null; then
     echo "[-] Garble not found. Installing Garble..."
-    go install mvdan.cc/garble@latest
+    go install mvdan.cc/garble@v0.9.3
     export GOBIN=$HOME/go/bin
     export PATH=$PATH:$GOBIN
 fi

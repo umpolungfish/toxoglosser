@@ -23,14 +23,14 @@ all: build
 .PHONY: build
 build:
 	@echo "[*] Building $(BINARY_NAME) with Garble obfuscation..."
-ifdef HAS_GARBLE
-	garble -tiny -literals -seed=random build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE)
-	@echo "[+] Successfully built $(BINARY_NAME) with Garble"
-else
-	@echo "[-] Garble not found. Building with standard Go compiler..."
-	go build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE)
-	@echo "[+] Successfully built $(BINARY_NAME) with standard Go"
-endif
+	@if [ -n "$(HAS_GARBLE)" ]; then \
+		garble -tiny -literals -seed=random build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE); \
+		echo "[+] Successfully built $(BINARY_NAME) with Garble"; \
+	else \
+		echo "[-] Garble not found. Building with standard Go compiler..."; \
+		go build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE); \
+		echo "[+] Successfully built $(BINARY_NAME) with standard Go"; \
+	fi
 	@ls -la $(BINARY_NAME)
 
 # Build without obfuscation (for debugging)
@@ -51,19 +51,19 @@ build-compressed: build
 .PHONY: cross-build
 cross-build:
 	@echo "[*] Cross-compiling for Windows from Linux..."
-	@export CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 && \
-ifdef HAS_GARBLE
-		garble -tiny -literals -seed=random build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE)
-else
-		go build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE)
-endif
+	@export CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc && \
+	if [ -n "$(HAS_GARBLE)" ]; then \
+		GOOS=windows GOARCH=amd64 garble -tiny -literals -seed=random build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE); \
+	else \
+		GOOS=windows GOARCH=amd64 go build $(LDFLAGS) $(BUILD_FLAGS) -o $(BINARY_NAME) $(SOURCE_FILE); \
+	fi
 	@echo "[+] Cross-compilation complete"
 
 # Install Garble if not present
 .PHONY: install-garble
 install-garble:
 	@echo "[*] Installing Garble..."
-	go install mvdan.cc/garble@latest
+	go install mvdan.cc/garble@v0.9.3
 	@echo "[+] Garble installed successfully"
 
 # Clean build artifacts

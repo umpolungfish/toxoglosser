@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 	"syscall"
 	"unsafe"
+	"toxoglosser/common"
 )
 
 // FunctionHash represents a hash of a function name
@@ -40,7 +41,7 @@ func GetModuleHandleByHash(moduleName string) (uintptr, error) {
 	moduleHash := HashString(moduleName)
 	
 	// Get the PEB to enumerate loaded modules
-	peb := getPEB()
+	peb := common.GetPEB()
 	if peb == 0 {
 		return 0, syscall.Errno(1)
 	}
@@ -55,7 +56,7 @@ func GetModuleHandleByHash(moduleName string) (uintptr, error) {
 
 	for nextEntry != (*LIST_ENTRY)(unsafe.Pointer(inMemoryOrderModuleList)) {
 		// Get the LDR_DATA_TABLE_ENTRY
-		tableEntry := (*LDR_DATA_TABLE_ENTRY)(unsafe.Pointer(uintptr(unsafe.Pointer(nextEntry)) - unsafe.Offsetof(LDR_DATA_TABLE_ENTRY.InMemoryOrderLinks)))
+		tableEntry := (*LDR_DATA_TABLE_ENTRY)(unsafe.Pointer(nextEntry))
 
 		// Get the base DLL name and check if it matches
 		if tableEntry.BaseDllName.Length > 0 {
@@ -83,7 +84,7 @@ func GetProcAddressByHash(module windows.Handle, functionName string) (uintptr, 
 	ntHeaders := (*IMAGE_NT_HEADERS64)(unsafe.Pointer(modBase + uintptr(dosHeader.E_lfanew)))
 
 	// Get export directory
-	exportDirAddr := ntHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress
+	exportDirAddr := ntHeaders.OptionalHeader.DataDirectory[0].VirtualAddress
 	if exportDirAddr == 0 {
 		return 0, syscall.Errno(0)
 	}
@@ -153,136 +154,3 @@ func UTF16PtrToString(p *uint16) string {
 	return syscall.UTF16ToString(slice)
 }
 
-// Helper functions and structures for manual resolution
-type PEB_LDR_DATA struct {
-	Length                     uint32
-	Initialized                uint8
-	_                          uint8 // padding
-	InLoadOrderModuleIndex     uint16
-	InMemoryOrderModuleIndex   uint16
-	InInitializationOrderIndex uint16
-	EntryInProgress            uintptr
-	Spare                      uintptr
-}
-
-type LIST_ENTRY struct {
-	Flink *LIST_ENTRY
-	Blink *LIST_ENTRY
-}
-
-type UNICODE_STRING struct {
-	Length        uint16
-	MaximumLength uint16
-	Buffer        uintptr
-}
-
-type LDR_DATA_TABLE_ENTRY struct {
-	InMemoryOrderLinks        LIST_ENTRY
-	InInitializationOrderLinks LIST_ENTRY
-	DllBase                   uintptr
-	EntryPoint                uintptr
-	SizeOfImage               uint32
-	FullDllName               UNICODE_STRING
-	BaseDllName               UNICODE_STRING
-	_                         [8]byte // padding
-	LoadCount                 uint16
-	_                         uint16  // padding
-	// ... other fields omitted for brevity
-}
-
-type IMAGE_DOS_HEADER struct {
-	E_magic    uint16
-	E_cblp     uint16
-	E_cp       uint16
-	E_crlc     uint16
-	E_cparhdr  uint16
-	E_minalloc uint16
-	E_maxalloc uint16
-	E_ss       uint16
-	E_sp       uint16
-	E_csum     uint16
-	E_ip       uint16
-	E_cs       uint16
-	E_lfarlc   uint16
-	E_ovno     uint16
-	E_res      [4]uint16
-	E_oemid    uint16
-	E_oeminfo  uint16
-	E_res2     [10]uint16
-	E_lfanew   int32
-}
-
-type IMAGE_FILE_HEADER struct {
-	Machine              uint16
-	NumberOfSections     uint16
-	TimeDateStamp        uint32
-	PointerToSymbolTable uint32
-	NumberOfSymbols      uint32
-	SizeOfOptionalHeader uint16
-	Characteristics      uint16
-}
-
-type IMAGE_DATA_DIRECTORY struct {
-	VirtualAddress uint32
-	Size           uint32
-}
-
-type IMAGE_OPTIONAL_HEADER64 struct {
-	Magic                       uint16
-	MajorLinkerVersion          uint8
-	MinorLinkerVersion          uint8
-	SizeOfCode                  uint32
-	SizeOfInitializedData       uint32
-	SizeOfUninitializedData     uint32
-	AddressOfEntryPoint         uint32
-	BaseOfCode                  uint32
-	ImageBase                   uint64
-	SectionAlignment            uint32
-	FileAlignment               uint32
-	MajorOperatingSystemVersion uint16
-	MinorOperatingSystemVersion uint16
-	MajorImageVersion           uint16
-	MinorImageVersion           uint16
-	MajorSubsystemVersion       uint16
-	MinorSubsystemVersion       uint16
-	Win32VersionValue           uint32
-	SizeOfImage                 uint32
-	SizeOfHeaders               uint32
-	CheckSum                    uint32
-	Subsystem                   uint16
-	DllCharacteristics          uint16
-	SizeOfStackReserve          uint64
-	SizeOfStackCommit           uint64
-	SizeOfHeapReserve           uint64
-	SizeOfHeapCommit            uint64
-	LoaderFlags                 uint32
-	NumberOfRvaAndSizes         uint32
-	DataDirectory               [16]IMAGE_DATA_DIRECTORY
-}
-
-type IMAGE_NT_HEADERS64 struct {
-	Signature      uint32
-	FileHeader     IMAGE_FILE_HEADER
-	OptionalHeader IMAGE_OPTIONAL_HEADER64
-}
-
-type IMAGE_EXPORT_DIRECTORY struct {
-	Characteristics       uint32
-	TimeDateStamp         uint32
-	MajorVersion          uint16
-	MinorVersion          uint16
-	Name                  uint32
-	Base                  uint32
-	NumberOfFunctions     uint32
-	NumberOfNames         uint32
-	AddressOfFunctions    uint32
-	AddressOfNames        uint32
-	AddressOfNameOrdinals uint32
-}
-
-const IMAGE_DIRECTORY_ENTRY_EXPORT = 0
-
-// getPEB retrieves the Process Environment Block
-func getPEB() uintptr {
-	return uintptr(*(*uintptr)(unsafe.Pointer(uintptr(*(*uintptr)(unsafe.Pointer(uintptr(0x60)))))))
-}
