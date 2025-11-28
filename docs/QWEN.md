@@ -30,7 +30,7 @@ The tool is organized into several modules:
 
 ### Prerequisites
 
-- Go (v1.18 or later)
+- Go (v1.20 or later) - Required for proper cross-compilation and build constraints
 - Garble (v0.9.3 or later) for obfuscation
 - UPX (optional, for size reduction)
 - MinGW-w64 cross-compiler for Windows (if building from Linux)
@@ -159,6 +159,8 @@ The following fixes were applied to ensure successful compilation:
 - Install MinGW-w64 cross-compiler for Windows target
 - Set appropriate environment variables: `CGO_ENABLED=1`, `GOOS=windows`, `GOARCH=amd64`
 - Use the correct compiler: `CC=x86_64-w64-mingw32-gcc`
+- Update Go to v1.20+ to meet build constraint requirements
+- Reinstall Garble with the newer Go version to ensure compatibility
 
 ## Security Considerations
 

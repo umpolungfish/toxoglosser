@@ -1,11 +1,11 @@
-Fix compilation errors and update documentation
+Update build system and resolve Go version compatibility issues
 
-- Resolve duplicate declarations across core modules by using unique variable names
-- Fix type mismatches between syscall.Handle and golang.org/x/sys/windows.Handle 
-- Remove duplicate PE structure definitions and ptrToString function
-- Correct Windows API function calls with manual syscall implementations
-- Address import cycle and unused import errors across packages
-- Update README.md with MinGW-w64 installation instructions
-- Add common build issues and troubleshooting section to documentation
-- Update QWEN.md with compilation notes and prerequisites
-- Enable successful cross-compilation for Windows target with CGO
+- Update go.mod to require Go 1.20+ (was 1.18) to meet project requirements
+- Create proper build environment script with correct CGO settings for Windows cross-compilation
+- Install Go 1.20.3 from Ubuntu repositories to meet minimum version requirement
+- Reinstall Garble obfuscator with newer Go version to resolve compatibility issues
+- Successfully build toxoglosser.exe with cross-compilation for Windows target
+- Apply Garble obfuscation and UPX compression for size reduction and evasion
+- Verify resulting PE32+ executable is properly formed for Windows x86-64
+- Document build prerequisites and environment setup in documentation
+- Fix build constraint issues that excluded Windows system files during compilation
