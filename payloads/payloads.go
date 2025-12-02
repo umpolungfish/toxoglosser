@@ -8,7 +8,9 @@ import (
 	"io"
 )
 
-// DecryptPayload decrypts an encrypted payload using AES
+// DecryptPayload decrypts an encrypted payload using AES.
+// The function expects the payload to have a prepended IV (Initialization Vector)
+// as required by the CFB decryption mode.
 func DecryptPayload(data, key []byte) ([]byte, error) {
 	if len(data) < 16 {
 		return nil, errors.New("payload too small to be encrypted")
@@ -29,7 +31,9 @@ func DecryptPayload(data, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// EncryptPayload encrypts a payload using AES
+// EncryptPayload encrypts a payload using AES.
+// The function generates and prepends a random IV (Initialization Vector)
+// as required by the CFB encryption mode.
 func EncryptPayload(plaintext, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -48,14 +52,16 @@ func EncryptPayload(plaintext, key []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// ValidatePayload checks if the payload is valid
+// ValidatePayload checks if the payload is valid.
+// Performs basic validation checks on the payload to ensure it meets
+// expected criteria before processing.
 func ValidatePayload(data []byte) bool {
 	// Basic validation - check for common shellcode patterns
 	// This is a simplified check
 	if len(data) == 0 {
 		return false
 	}
-	
+
 	// Check for common x64 shellcode prefixes
 	if len(data) >= 2 {
 		// Common x64 shellcode prefixes
@@ -63,7 +69,7 @@ func ValidatePayload(data []byte) bool {
 			return true
 		}
 	}
-	
+
 	// Additional validation checks would go here
 	return true
 }

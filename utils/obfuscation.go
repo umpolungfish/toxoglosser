@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
+	"toxoglosser/common"
 )
 
 // XORKey is used to obfuscate strings - it's generated dynamically at runtime
@@ -35,22 +36,22 @@ func GenerateRandomKey(length int) []byte {
 func ObfuscateString(str string) []byte {
 	data := []byte(str)
 	result := make([]byte, len(data))
-	
+
 	for i := 0; i < len(data); i++ {
 		result[i] = data[i] ^ XORKey[i%len(XORKey)]
 	}
-	
+
 	return result
 }
 
 // DeobfuscateString deobfuscates a string using XOR with a key
 func DeobfuscateString(data []byte) string {
 	result := make([]byte, len(data))
-	
+
 	for i := 0; i < len(data); i++ {
 		result[i] = data[i] ^ XORKey[i%len(XORKey)]
 	}
-	
+
 	return string(result)
 }
 
@@ -123,13 +124,9 @@ func expandKey(key []byte, length int) []byte {
 	return expanded
 }
 
-// HashString returns a simple hash of the string for API resolution
+// HashString is a wrapper around the common package HashString function
 func HashString(s string) uint32 {
-	var hash uint32 = 5381
-	for i := 0; i < len(s); i++ {
-		hash = ((hash << 5) + hash) + uint32(s[i])
-	}
-	return hash
+	return common.HashString(s)
 }
 
 // ObfuscateStringStatic obfuscates a string using compile-time obfuscation

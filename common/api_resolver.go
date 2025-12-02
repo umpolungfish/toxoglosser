@@ -9,7 +9,9 @@ import (
 	"unsafe"
 )
 
-// HashString returns a djb2 hash of the string for API resolution
+// HashString returns a djb2 hash of the string for API resolution.
+// This function is used to avoid direct string usage when resolving Windows API functions,
+// helping to evade static analysis.
 func HashString(s string) uint32 {
 	var hash uint32 = 5381
 	for i := 0; i < len(s); i++ {
@@ -18,22 +20,35 @@ func HashString(s string) uint32 {
 	return hash
 }
 
-// ptrToString converts a C string pointer to a Go string
+// ptrToString converts a C string pointer to a Go string.
+// The function safely reads from the pointer until it finds a null terminator,
+// avoiding assumptions about fixed buffer sizes.
 func ptrToString(ptr *byte) string {
 	if ptr == nil {
 		return ""
 	}
 
-	p := (*[1 << 30]byte)(unsafe.Pointer(ptr))
-	for i := 0; i < len(p); i++ {
-		if p[i] == 0 {
-			return string(p[:i])
-		}
+	// Find the length by walking until we reach the null terminator
+	end := unsafe.Pointer(ptr)
+	for *(*byte)(end) != 0 {
+		end = unsafe.Pointer(uintptr(end) + 1)
 	}
-	return string(p[:])
+
+	// Calculate the length and convert to Go string
+	length := uintptr(end) - uintptr(unsafe.Pointer(ptr))
+	if length == 0 {
+		return ""
+	}
+
+	// Create a slice from the C string and convert to Go string
+	// This is safe because we've determined the length based on the null terminator
+	bytes := unsafe.Slice(ptr, length)
+	return string(bytes)
 }
 
-// UTF16PtrToString converts a UTF-16 pointer to a Go string
+// UTF16PtrToString converts a UTF-16 pointer to a Go string.
+// This function is commonly used when working with Windows API functions
+// that return UTF-16 encoded strings.
 func UTF16PtrToString(p *uint16) string {
 	if p == nil {
 		return ""
@@ -50,12 +65,15 @@ func UTF16PtrToString(p *uint16) string {
 	return syscall.UTF16ToString(slice)
 }
 
-// getPEB retrieves the Process Environment Block
+// getPEB retrieves the Process Environment Block.
+// This is an internal function to get the PEB address.
 func getPEB() uintptr {
 	return uintptr(*(*uintptr)(unsafe.Pointer(uintptr(*(*uintptr)(unsafe.Pointer(uintptr(0x60)))))))
 }
 
-// GetPEB retrieves the Process Environment Block (exported function)
+// GetPEB retrieves the Process Environment Block.
+// The PEB contains information about the current process and is used
+// for manual API resolution by enumerating loaded modules.
 func GetPEB() uintptr {
 	return getPEB()
 }
@@ -187,7 +205,9 @@ type IMAGE_EXPORT_DIRECTORY struct {
 
 const IMAGE_DIRECTORY_ENTRY_EXPORT = 0
 
-// GetModuleHandleByHash gets a module handle by hashing the module name
+// GetModuleHandleByHash gets a module handle by hashing the module name.
+// This function avoids direct string usage for EDR evasion by using hash-based
+// resolution to find loaded modules in the current process.
 func GetModuleHandleByHash(moduleName string) (uintptr, error) {
 	// Use a hash to avoid direct string usage
 	moduleHash := HashString(moduleName)
@@ -225,7 +245,9 @@ func GetModuleHandleByHash(moduleName string) (uintptr, error) {
 	return 0, syscall.Errno(1)
 }
 
-// GetProcAddressByHash finds a function address by hashing the function name
+// GetProcAddressByHash finds a function address by hashing the function name.
+// This function performs manual export table parsing to locate functions
+// without using conventional API functions, helping to evade user-mode hooks.
 func GetProcAddressByHash(module windows.Handle, functionName string) (uintptr, error) {
 	// Calculate the hash of the function name
 	funcHash := HashString(functionName)

