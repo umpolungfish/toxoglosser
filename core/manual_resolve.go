@@ -100,7 +100,7 @@ func GetProcAddressByHash(module windows.Handle, functionName string) (uintptr, 
 	for i := uint32(0); i < exportDir.NumberOfNames; i++ {
 		nameAddr := *(*uint32)(unsafe.Pointer(namesArray + uintptr(i)*4))
 		namePtr := unsafe.Pointer(modBase + uintptr(nameAddr))
-		functionNameStr := common.ptrToString((*byte)(namePtr))
+		functionNameStr := common.PtrToString((*byte)(namePtr))
 
 		if common.HashString(functionNameStr) == funcHash {
 			ordinal := *(*uint16)(unsafe.Pointer(ordinalsArray + uintptr(i)*2))

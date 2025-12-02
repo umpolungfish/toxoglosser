@@ -10,11 +10,6 @@ import (
 	"toxoglosser/common"
 )
 
-const (
-	MEM_COMMIT_RESERVE = 0x3000
-	PAGE_READWRITE     = 0x04
-	PAGE_EXECUTE_READ  = 0x20
-)
 
 // ReflectiveDLLInject performs reflective DLL injection into a target process.
 // This function implements a form of DLL injection by writing the DLL path to the target

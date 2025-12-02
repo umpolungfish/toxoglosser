@@ -20,10 +20,10 @@ func HashString(s string) uint32 {
 	return hash
 }
 
-// ptrToString converts a C string pointer to a Go string.
+// PtrToString converts a C string pointer to a Go string.
 // The function safely reads from the pointer until it finds a null terminator,
 // avoiding assumptions about fixed buffer sizes.
-func ptrToString(ptr *byte) string {
+func PtrToString(ptr *byte) string {
 	if ptr == nil {
 		return ""
 	}
@@ -274,7 +274,7 @@ func GetProcAddressByHash(module windows.Handle, functionName string) (uintptr, 
 	for i := uint32(0); i < exportDir.NumberOfNames; i++ {
 		nameAddr := *(*uint32)(unsafe.Pointer(namesArray + uintptr(i)*4))
 		namePtr := unsafe.Pointer(modBase + uintptr(nameAddr))
-		functionNameStr := ptrToString((*byte)(namePtr))
+		functionNameStr := PtrToString((*byte)(namePtr))
 
 		if HashString(functionNameStr) == funcHash {
 			ordinal := *(*uint16)(unsafe.Pointer(ordinalsArray + uintptr(i)*2))

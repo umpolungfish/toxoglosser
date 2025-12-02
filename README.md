@@ -187,24 +187,32 @@ garble -tiny -literals -seed=random build -ldflags="-s -w" -buildmode=pie -trimp
 - **Solution**: Install proper MinGW-w64 cross-compiler for Windows
 
 #### 2. Duplicate declaration errors
-- **Issue**: `kernel32 redeclared in this block` or similar
-- **Solution**: Fixed by using unique variable names across different packages
+- **Issue**: Multiple packages defining the same constants like `MEM_COMMIT_RESERVE`, `PAGE_READWRITE`, etc.
+- **Solution**: Centralized all Windows constants in a dedicated `core/constants.go` file to avoid duplication across packages
 
-#### 3. Type mismatch errors
-- **Issue**: `cannot use hProcess (variable of type syscall.Handle) as type "golang.org/x/sys/windows".Handle`
-- **Solution**: Proper type conversion using `windows.Handle(hProcess)`
+#### 3. Undefined function errors
+- **Issue**: `undefined: common.ptrToString` or similar
+- **Solution**: Fixed by capitalizing function names for proper export (e.g., `ptrToString` → `PtrToString`) and updating all references to use the correct exported function name
 
-#### 4. Undefined Windows API errors
-- **Issue**: `undefined: windows.Context` or similar
-- **Solution**: Manual syscall implementation instead of direct API calls
+#### 4. Type mismatch errors
+- **Issue**: `cannot use hProcess (variable of type syscall.Handle) as type "golang.org/x/sys/windows".Handle` or syscall parameter mismatches
+- **Solution**: Proper type conversion using `windows.Handle(hProcess)` and ensuring correct parameter types match function signatures (e.g., `NtProtectVirtualMemory` expects `uint32` for new protection and `*uint32` for old protection storage)
 
 #### 5. Import cycle and unused import errors
-- **Issue**: `imported and not used` errors
+- **Issue**: `imported and not used` errors and import cycles
 - **Solution**: Removed unused imports and restructured packages to avoid cycles
 
 #### 6. Go version compatibility
 - **Issue**: "Go version 'go1.18.1' is too old; please upgrade to Go 1.20.x or newer"
-- **Solution**: Update to Go 1.20+ and reinstall Garble with the newer Go version
+- **Solution**: Update to Go 1.21+ and reinstall Garble with the newer Go version
+
+#### 7. Function redeclaration conflicts
+- **Issue**: Functions like `copyMemory` defined in multiple files in the same package
+- **Solution**: Renamed conflicting functions to have unique names (e.g., `copyMemory` → `copyMemoryInternal` in specific files)
+
+#### 8. Missing package imports
+- **Issue**: `undefined: windows` or other package references
+- **Solution**: Add missing imports like `golang.org/x/sys/windows` to files that reference Windows-specific functionality
 
 ### Troubleshooting Tips
 

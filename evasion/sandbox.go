@@ -232,34 +232,7 @@ func checkRAMWithGlobalMemoryStatus() bool {
 
 // checkSandboxProcesses checks for processes commonly found in sandbox environments
 func checkSandboxProcesses() bool {
-	sandboxProcesses := []string{
-		"sandboxiedcomlaunch.exe",
-		"sandboxierpcss.exe",
-		"procmon.exe",
-		"wireshark.exe",
-		"fiddler.exe",
-		"iddemon.exe",
-		"tcpview.exe",
-		"netmon.exe",
-		"sniffhit.exe",
-		"joeboxserver.exe",
-		"joeboxcontrol.exe",
-		"xenservice.exe",
-		"vboxservice.exe",
-		"vboxtray.exe",
-		"vmtoolsd.exe",
-		"vmwaretray.exe",
-		"vmwareuser.exe",
-		"VGAuthService.exe",
-		"vm3dservice.exe",
-		"vmsrvc.exe",
-		"vmware.exe",
-		"vbox.exe",
-		"qemu.exe",
-		"vpc.exe",
-	}
-
-	// For a real implementation, we would enumerate processes and check against the list
+	// For a real implementation, we would enumerate processes and check against a list
 	// Here we'll just return false since Go doesn't make process enumeration straightforward
 	return false
 }

