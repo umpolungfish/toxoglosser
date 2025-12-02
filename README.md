@@ -16,9 +16,11 @@
 - **Enhanced EDR Evasion**: Implements unhooking-based AMSI/ETW bypass, direct syscalls, and advanced sandbox detection
 - **Memory Protection**: Uses safe RX memory allocation (RW→RX) instead of suspicious RWX
 - **String Obfuscation**: Encrypts/obfuscates API calls and strings to avoid static signatures
-- **Configurable Delays**: Includes jitter-based delays with obfuscation to evade timing analysis
+- **Configurable Delays**: Includes jitter-based delays with cryptographically secure randomization to evade timing analysis
 - **Staged Payload Loading**: Removes static shellcode signatures, loads payloads from C2 server as primary method
 - **Build Optimization**: Garble obfuscation, size reduction, UPX compression support
+- **Comprehensive Testing**: Unit tests for core functionality with proper error handling
+- **Improved Documentation**: Enhanced godoc-style comments and architectural clarity
 
 ## Enhanced Evasion Capabilities
 
@@ -176,6 +178,14 @@ The build process includes several optimizations to reduce detection:
    - Unhooking-based AMSI/ETW bypass
    - Sleep obfuscation
 
+4. **Code Quality Improvements**:
+   - Enhanced error handling with proper error wrapping and context
+   - Centralized duplicated functions in common packages
+   - Comprehensive unit tests for core functionality
+   - Improved documentation with godoc-style comments
+   - Secure random number generation to prevent race conditions
+   - Elimination of duplicate hash functions
+
 ## Size Reduction Tips
 
 To minimize the binary size and avoid detection:
@@ -280,6 +290,8 @@ After all optimizations, the binary should be significantly smaller than the ori
 ### 4. Sleep Obfuscation
 - Ekko-style sleep obfuscation to evade memory scanners
 - Avoids direct Sleep/Wait functions that trigger alerts
+- Uses cryptographically secure random number generation (crypto/rand) instead of insecure math/rand for true randomness
+- Eliminates potential race conditions from improper seeding
 
 ## Process Hunting
 
